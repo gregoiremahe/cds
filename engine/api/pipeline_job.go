@@ -61,35 +61,35 @@ func (api *API) addJobToStageHandler() service.Handler {
 		defer tx.Rollback()
 
 		if err := pipeline.CreateAudit(tx, pip, pipeline.AuditAddJob, deprecatedGetUser(ctx)); err != nil {
-			return sdk.WrapError(err, "Cannot create audit")
+			return sdk.WrapError(err, "cannot create audit")
 		}
 
-		reqs, errlb := action.LoadAllBinaryRequirements(tx)
+		rs, errlb := action.GetRequirementsDistinctBinary(tx)
 		if errlb != nil {
-			return sdk.WrapError(errlb, "addJobToStageHandler> cannot load all binary requirements")
+			return sdk.WrapError(errlb, "cannot load all binary requirements")
 		}
 
 		//Default value is job enabled
 		job.Action.Enabled = true
 		job.Enabled = true
 		if err := pipeline.InsertJob(tx, &job, stageID, pip); err != nil {
-			return sdk.WrapError(err, "Cannot insert job in database")
+			return sdk.WrapError(err, "cannot insert job in database")
 		}
 
-		if err := worker.ComputeRegistrationNeeds(tx, reqs, job.Action.Requirements); err != nil {
-			return sdk.WrapError(err, "Cannot compute registration needs")
+		if err := worker.ComputeRegistrationNeeds(tx, rs, job.Action.Requirements); err != nil {
+			return sdk.WrapError(err, "cannot compute registration needs")
 		}
 
 		if err := pipeline.UpdatePipeline(tx, pip); err != nil {
-			return sdk.WrapError(err, "Cannot update pipeline")
+			return sdk.WrapError(err, "cannot update pipeline")
 		}
 
 		if err := tx.Commit(); err != nil {
-			return err
+			return sdk.WithStack(err)
 		}
 
 		if err := pipeline.LoadPipelineStage(ctx, api.mustDB(), pip); err != nil {
-			return sdk.WrapError(err, "Cannot load stages")
+			return sdk.WrapError(err, "cannot load stages")
 		}
 
 		event.PublishPipelineJobAdd(projectKey, pipelineName, stage, job, deprecatedGetUser(ctx))
@@ -150,42 +150,42 @@ func (api *API) updateJobHandler() service.Handler {
 		}
 
 		if oldJob.PipelineActionID == 0 {
-			return sdk.WrapError(sdk.ErrNotFound, "updateJobHandler>Job not found")
+			return sdk.WrapError(sdk.ErrNotFound, "job not found")
 		}
 
 		tx, err := api.mustDB().Begin()
 		if err != nil {
-			return sdk.WrapError(err, "Cannot start transaction")
+			return sdk.WrapError(err, "cannot start transaction")
 		}
 		defer tx.Rollback()
 
 		if err := pipeline.CreateAudit(tx, pipelineData, pipeline.AuditUpdateJob, deprecatedGetUser(ctx)); err != nil {
-			return sdk.WrapError(err, "Cannot create audit")
+			return sdk.WrapError(err, "cannot create audit")
 		}
 
-		reqs, errlb := action.LoadAllBinaryRequirements(tx)
+		rs, errlb := action.GetRequirementsDistinctBinary(tx)
 		if errlb != nil {
-			return sdk.WrapError(errlb, "updateJobHandler> cannot load all binary requirements")
+			return sdk.WrapError(errlb, "cannot load all binary requirements")
 		}
 
 		if err := pipeline.UpdateJob(tx, &job, deprecatedGetUser(ctx).ID); err != nil {
-			return sdk.WrapError(err, "Cannot update in database")
+			return sdk.WrapError(err, "cannot update in database")
 		}
 
-		if err := worker.ComputeRegistrationNeeds(tx, reqs, job.Action.Requirements); err != nil {
-			return sdk.WrapError(err, "Cannot compute registration needs")
+		if err := worker.ComputeRegistrationNeeds(tx, rs, job.Action.Requirements); err != nil {
+			return sdk.WrapError(err, "cannot compute registration needs")
 		}
 
 		if err := pipeline.UpdatePipeline(tx, pipelineData); err != nil {
-			return sdk.WrapError(err, "Cannot update pipeline")
+			return sdk.WrapError(err, "cannot update pipeline")
 		}
 
 		if err := tx.Commit(); err != nil {
-			return sdk.WrapError(err, "Cannot commit transaction")
+			return sdk.WrapError(err, "cannot commit transaction")
 		}
 
 		if err := pipeline.LoadPipelineStage(ctx, api.mustDB(), pipelineData); err != nil {
-			return sdk.WrapError(err, "Cannot load stages")
+			return sdk.WrapError(err, "cannot load stages")
 		}
 
 		event.PublishPipelineJobUpdate(key, pipName, stage, oldJob, job, deprecatedGetUser(ctx))

@@ -50,7 +50,7 @@ func UpdateGRPCPlugin(db gorp.SqlExecutor, pl *sdk.GRPCPlugin, params []sdk.Para
 		Enabled:    true,
 	}
 
-	oldA, err := action.LoadPublicAction(db, a.Name)
+	oldA, err := action.LoadPublicByName(db, a.Name)
 	if err != nil {
 		return nil, err
 	}

@@ -95,10 +95,11 @@ var (
 // - a network access "telnet google.com 443"
 //easyjson:json
 type Requirement struct {
-	ID    int64  `json:"id"`
-	Name  string `json:"name" yaml:"name"`
-	Type  string `json:"type" yaml:"type"`
-	Value string `json:"value" yaml:"value"`
+	ID       int64  `json:"id" db:"id"`
+	ActionID int64  `json:"action_id" db:"action_id"`
+	Name     string `json:"name" yaml:"name" db:"name"`
+	Type     string `json:"type" yaml:"type" db:"type"`
+	Value    string `json:"value" yaml:"value" db:"value"`
 }
 
 // AddRequirement append a requirement in a requirement array

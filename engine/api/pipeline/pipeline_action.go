@@ -109,7 +109,7 @@ func InsertJob(db gorp.SqlExecutor, job *sdk.Job, stageID int64, pip *sdk.Pipeli
 
 // UpdateJob  updates the job by actionData.PipelineActionID and actionData.ID
 func UpdateJob(db gorp.SqlExecutor, job *sdk.Job, userID int64) error {
-	clearJoinedAction, err := action.LoadActionByID(db, job.Action.ID)
+	clearJoinedAction, err := action.LoadByID(db, job.Action.ID)
 	if err != nil {
 		return err
 	}
@@ -163,18 +163,13 @@ func CheckJob(db gorp.SqlExecutor, job *sdk.Job) error {
 	for i := range job.Action.Actions {
 		step := &job.Action.Actions[i]
 		log.Debug("CheckJob> Checking step %s", step.Name)
-		a, err := action.LoadPublicAction(db, step.Name)
+		a, err := action.LoadPublicByName(db, step.Name)
 		if err != nil {
 			if sdk.ErrorIs(err, sdk.ErrNoAction) {
 				errs = append(errs, sdk.NewMessage(sdk.MsgJobNotValidActionNotFound, job.Action.Name, step.Name, i+1))
 				continue
 			}
 			return sdk.WrapError(err, "Unable to load public action %s", step.Name)
-		}
-
-		a.Parameters, err = action.LoadActionParameters(db, a.ID)
-		if err != nil {
-			return sdk.WrapError(err, "Unable to load public action %s parameters", step.Name)
 		}
 
 		for x := range step.Parameters {
@@ -222,22 +217,7 @@ func CheckJob(db gorp.SqlExecutor, job *sdk.Job) error {
 	return nil
 }
 
-// GetPipelineIDFromJoinedActionID returns the pipeline id from any joined action
-func GetPipelineIDFromJoinedActionID(db gorp.SqlExecutor, id int64) (int64, error) {
-	query := `
-	SELECT 	pipeline_stage.pipeline_id
-	FROM 	pipeline_action, pipeline_stage
-	WHERE 	pipeline_action.pipeline_stage_id = pipeline_stage.id
-	AND 	pipeline_action.action_id = $1
-	`
-	id, err := db.SelectInt(query, id)
-	if err != nil {
-		return 0, sdk.WrapError(err, "GetPipelineIDFromJoinedActionID")
-	}
-	return id, nil
-}
-
-// CountInValueVarData represents the result of CountInVarValue function
+// CountInPipelineData represents the result of CountInVarValue function
 type CountInPipelineData struct {
 	PipName   string
 	StageName string

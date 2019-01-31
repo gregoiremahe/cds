@@ -3,10 +3,8 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"net/http"
-	"strconv"
 
 	"github.com/gorilla/mux"
 	yaml "gopkg.in/yaml.v2"
@@ -23,7 +21,7 @@ import (
 // @title List all public actions
 func (api *API) getActionsHandler() service.Handler {
 	return func(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
-		acts, err := action.LoadActions(api.mustDB())
+		acts, err := action.LoadAll(api.mustDB())
 		if err != nil {
 			return sdk.WrapError(err, "GetActions: Cannot load action from db")
 		}
@@ -46,22 +44,21 @@ func (api *API) getPipelinesUsingActionHandler() service.Handler {
 
 func (api *API) getActionsRequirements() service.Handler {
 	return func(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
-		req, err := action.LoadAllBinaryRequirements(api.mustDB())
+		rs, err := action.GetRequirementsDistinctBinary(api.mustDB())
 		if err != nil {
-			return sdk.WrapError(err, "Cannot load action requirements")
+			return sdk.WrapError(err, "cannot load action requirements")
 		}
-		return service.WriteJSON(w, req, http.StatusOK)
+		return service.WriteJSON(w, rs, http.StatusOK)
 	}
 }
 
 func (api *API) deleteActionHandler() service.Handler {
 	return func(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
-
 		// Get action name in URL
 		vars := mux.Vars(r)
 		name := vars["permActionName"]
 
-		a, errLoad := action.LoadPublicAction(api.mustDB(), name)
+		a, errLoad := action.LoadPublicByName(api.mustDB(), name)
 		if errLoad != nil {
 			if !sdk.ErrorIs(errLoad, sdk.ErrNoAction) {
 				log.Warning("deleteAction> Cannot load action %s: %T %s", name, errLoad, errLoad)
@@ -97,7 +94,7 @@ func (api *API) deleteActionHandler() service.Handler {
 	}
 }
 
-func (api *API) updateActionHandler() service.Handler {
+func (api *API) putActionHandler() service.Handler {
 	return func(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
 		// Get action name in URL
 		vars := mux.Vars(r)
@@ -110,25 +107,25 @@ func (api *API) updateActionHandler() service.Handler {
 		}
 
 		// Check that action  already exists
-		actionDB, err := action.LoadPublicAction(api.mustDB(), name)
+		actionDB, err := action.LoadPublicByName(api.mustDB(), name)
 		if err != nil {
-			return sdk.WrapError(err, "Cannot check if action %s exist", a.Name)
+			return sdk.WrapError(err, "cannot check if action %s exist", a.Name)
 		}
 
 		tx, err := api.mustDB().Begin()
 		if err != nil {
-			return sdk.WrapError(err, "Cannot begin tx")
+			return sdk.WrapError(err, "cannot begin transaction")
 		}
 		defer tx.Rollback()
 
 		a.ID = actionDB.ID
 
 		if err = action.UpdateActionDB(tx, &a, deprecatedGetUser(ctx).ID); err != nil {
-			return sdk.WrapError(err, "updateAction: Cannot update action")
+			return sdk.WrapError(err, "cannot update action")
 		}
 
 		if err = tx.Commit(); err != nil {
-			return sdk.WrapError(err, "Cannot commit transaction")
+			return sdk.WrapError(err, "cannot commit transaction")
 		}
 
 		event.PublishActionUpdate(*actionDB, a, deprecatedGetUser(ctx))
@@ -137,7 +134,7 @@ func (api *API) updateActionHandler() service.Handler {
 	}
 }
 
-func (api *API) addActionHandler() service.Handler {
+func (api *API) postActionHandler() service.Handler {
 	return func(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
 		var a sdk.Action
 		if err := service.UnmarshalBody(r, &a); err != nil {
@@ -149,7 +146,6 @@ func (api *API) addActionHandler() service.Handler {
 		if errConflict != nil {
 			return errConflict
 		}
-
 		if conflict {
 			return sdk.WrapError(sdk.ErrConflict, "addAction> Action %s already exists", a.Name)
 		}
@@ -177,18 +173,16 @@ func (api *API) addActionHandler() service.Handler {
 
 func (api *API) getActionAuditHandler() service.Handler {
 	return func(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
-		vars := mux.Vars(r)
-		actionIDString := vars["actionID"]
-
-		actionID, err := strconv.Atoi(actionIDString)
+		actionID, err := requestVarInt(r, "actionID")
 		if err != nil {
-			return sdk.WrapError(sdk.ErrInvalidID, "getActionAuditHandler> ActionID must be a number, got %s: %s", actionIDString, err)
+			return err
 		}
-		// Load action
+
 		a, err := action.LoadAuditAction(api.mustDB(), actionID, true)
 		if err != nil {
-			return sdk.WrapError(err, "Cannot load audit for action %d", actionID)
+			return sdk.WrapError(err, "cannot load audit for action %d", actionID)
 		}
+
 		return service.WriteJSON(w, a, http.StatusOK)
 	}
 }
@@ -198,10 +192,11 @@ func (api *API) getActionHandler() service.Handler {
 		vars := mux.Vars(r)
 		name := vars["permActionName"]
 
-		a, err := action.LoadPublicAction(api.mustDB(), name)
+		a, err := action.LoadPublicByName(api.mustDB(), name)
 		if err != nil {
-			return sdk.WrapError(sdk.ErrNotFound, "getActionHandler> Cannot load action: %s", err)
+			return sdk.NewError(sdk.ErrNotFound, err)
 		}
+
 		return service.WriteJSON(w, a, http.StatusOK)
 	}
 }
@@ -210,18 +205,21 @@ func (api *API) getActionExportHandler() service.Handler {
 	return func(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
 		vars := mux.Vars(r)
 		name := vars["permActionName"]
+
 		format := FormString(r, "format")
 		if format == "" {
 			format = "yaml"
 		}
+
 		f, err := exportentities.GetFormat(format)
 		if err != nil {
-			return sdk.WrapError(err, "Format invalid")
+			return err
 		}
 
 		if _, err := action.Export(api.mustDB(), name, f, w); err != nil {
 			return sdk.WithStack(err)
 		}
+
 		w.Header().Add("Content-Type", exportentities.GetContentType(f))
 		return nil
 	}
@@ -251,7 +249,7 @@ func (api *API) importActionHandler() service.Handler {
 		case "application/x-yaml", "text/x-yam":
 			errapp = yaml.Unmarshal(data, ea)
 		default:
-			return sdk.NewError(sdk.ErrWrongRequest, fmt.Errorf("unsupported content-type: %s", contentType))
+			return sdk.NewErrorFrom(sdk.ErrWrongRequest, "unsupported content-type: %s", contentType)
 		}
 
 		if errapp != nil {
@@ -264,19 +262,18 @@ func (api *API) importActionHandler() service.Handler {
 		}
 
 		if a == nil {
-			return sdk.ErrWrongRequest
+			return sdk.WithStack(sdk.ErrWrongRequest)
 		}
 
-		tx, errbegin := api.mustDB().Begin()
-		if errbegin != nil {
-			return errbegin
+		tx, err := api.mustDB().Begin()
+		if err != nil {
+			return sdk.WithStack(err)
 		}
-
 		defer tx.Rollback()
 
 		//Check if action exists
 		exist := false
-		existingAction, errload := action.LoadPublicAction(tx, a.Name)
+		existingAction, errload := action.LoadPublicByName(tx, a.Name)
 		if errload == nil {
 			exist = true
 			a.ID = existingAction.ID
@@ -300,7 +297,7 @@ func (api *API) importActionHandler() service.Handler {
 		}
 
 		if err := tx.Commit(); err != nil {
-			return err
+			return sdk.WithStack(err)
 		}
 
 		if exist {

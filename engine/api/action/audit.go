@@ -9,7 +9,7 @@ import (
 )
 
 // LoadAuditAction loads from database the last 10 versions of an action definition
-func LoadAuditAction(db gorp.SqlExecutor, actionID int, public bool) ([]sdk.ActionAudit, error) {
+func LoadAuditAction(db gorp.SqlExecutor, actionID int64, public bool) ([]sdk.ActionAudit, error) {
 	audits := []sdk.ActionAudit{}
 	query := `
 		SELECT

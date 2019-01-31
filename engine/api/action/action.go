@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/go-gorp/gorp"
 
@@ -51,7 +50,7 @@ func InsertAction(tx gorp.SqlExecutor, a *sdk.Action, public bool) error {
 
 		// if child id is not given, try to load by name
 		if a.Actions[i].ID == 0 {
-			ch, errl := LoadPublicAction(tx, a.Actions[i].Name)
+			ch, errl := LoadPublicByName(tx, a.Actions[i].Name)
 			if errl != nil {
 				return errl
 			}
@@ -73,10 +72,10 @@ func InsertAction(tx gorp.SqlExecutor, a *sdk.Action, public bool) error {
 	for _, c := range a.Actions {
 		if len(c.Requirements) == 0 {
 			log.Debug("Try load children action requirement for id:%d", c.ID)
-			var errLoad error
-			c.Requirements, errLoad = LoadActionRequirements(tx, c.ID)
-			if errLoad != nil {
-				return fmt.Errorf("cannot LoadActionRequirements in InsertAction> %s", errLoad)
+			var err error
+			c.Requirements, err = getRequirementsByActionIDs(tx, []int64{c.ID})
+			if err != nil {
+				return err
 			}
 		}
 		// Now for each requirement of child, check if it exists in parent
@@ -99,108 +98,21 @@ func InsertAction(tx gorp.SqlExecutor, a *sdk.Action, public bool) error {
 	}
 
 	for i := range a.Requirements {
-		if err := InsertActionRequirement(tx, a.ID, a.Requirements[i]); err != nil {
+		r := a.Requirements[i]
+		r.ActionID = a.ID
+		if err := InsertRequirement(tx, &r); err != nil {
 			return err
 		}
 	}
 
 	for i := range a.Parameters {
-		if err := InsertActionParameter(tx, a.ID, a.Parameters[i]); err != nil {
+		if err := insertParameter(tx, &actionParameter{
+			Parameter: a.Parameters[i],
+			ActionID:  a.ID,
+		}); err != nil {
 			return sdk.WrapError(err, "Cannot InsertActionParameter %s", a.Parameters[i].Name)
 		}
 	}
-
-	return nil
-}
-
-// LoadPublicAction load an action from database
-func LoadPublicAction(db gorp.SqlExecutor, name string) (*sdk.Action, error) {
-	query := `SELECT id, name, description, type, last_modified, enabled, deprecated FROM action WHERE lower(action.name) = lower($1) AND public = true`
-	a, err := loadActions(db, query, name)
-	if err != nil {
-		return nil, err
-	}
-	return &a[0], nil
-}
-
-// LoadActionByID retrieves in database the action with given id
-func LoadActionByID(db gorp.SqlExecutor, actionID int64) (*sdk.Action, error) {
-	query := `SELECT id, name, description, type, last_modified, enabled, deprecated FROM action WHERE action.id = $1`
-	a, err := loadActions(db, query, actionID)
-	if err != nil {
-		return nil, err
-	}
-	return &a[0], nil
-}
-
-// LoadActions load all actions from database
-func LoadActions(db gorp.SqlExecutor) ([]sdk.Action, error) {
-	query := `SELECT id, name, description, type, last_modified, enabled, deprecated FROM action WHERE public = true ORDER BY name`
-	return loadActions(db, query)
-}
-
-func loadActions(db gorp.SqlExecutor, query string, args ...interface{}) ([]sdk.Action, error) {
-	var acts []sdk.Action
-	rows, err := db.Query(query, args...)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, sdk.ErrNoAction
-		}
-		return nil, err
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		a := sdk.Action{}
-		var lastModified time.Time
-		if err := rows.Scan(&a.ID, &a.Name, &a.Description, &a.Type, &lastModified, &a.Enabled, &a.Deprecated); err != nil {
-			if err == sql.ErrNoRows {
-				return nil, sdk.ErrNoAction
-			}
-			return nil, fmt.Errorf("cannot Scan> %s", err)
-		}
-		a.LastModified = lastModified.Unix()
-		acts = append(acts, a)
-	}
-
-	if len(acts) == 0 {
-		return nil, sdk.ErrNoAction
-	}
-
-	for i := range acts {
-		if err := loadActionDependencies(db, &acts[i]); err != nil {
-			return nil, err
-		}
-	}
-	return acts, nil
-}
-
-func loadActionDependencies(db gorp.SqlExecutor, a *sdk.Action) error {
-	var err error
-	// Load requirements
-	a.Requirements, err = LoadActionRequirements(db, a.ID)
-	if err != nil {
-		return fmt.Errorf("cannot LoadActionRequirements> %s", err)
-	}
-
-	// Load parameters
-	a.Parameters, err = LoadActionParameters(db, a.ID)
-	if err != nil {
-		return fmt.Errorf("cannot LoadActionParameters> %s", err)
-	}
-
-	// Don't try to load children is action is builtin
-	if a.Type == sdk.BuiltinAction {
-		return nil
-	}
-
-	// Load children
-	a.Actions, err = loadActionChildren(db, a.ID)
-	if err != nil {
-		return fmt.Errorf("cannot loadActionChildren> %s", err)
-	}
-
-	computeRequirements(a)
 
 	return nil
 }
@@ -219,13 +131,13 @@ func UpdateActionDB(db gorp.SqlExecutor, a *sdk.Action, userID int64) error {
 		return err
 	}
 
-	if err := deleteActionChildren(db, a.ID); err != nil {
+	if err := deleteEdgesByParentID(db, a.ID); err != nil {
 		return err
 	}
 	for i := range a.Actions {
 		// if child id is not given, try to load by name
 		if a.Actions[i].ID == 0 {
-			ch, errl := LoadPublicAction(db, a.Actions[i].Name)
+			ch, errl := LoadPublicByName(db, a.Actions[i].Name)
 			if errl != nil {
 				return errl
 			}
@@ -237,16 +149,19 @@ func UpdateActionDB(db gorp.SqlExecutor, a *sdk.Action, userID int64) error {
 		}
 	}
 
-	if err := DeleteActionParameters(db, a.ID); err != nil {
+	if err := deleteParametersByActionID(db, a.ID); err != nil {
 		return err
 	}
 	for i := range a.Parameters {
-		if err := InsertActionParameter(db, a.ID, a.Parameters[i]); err != nil {
+		if err := insertParameter(db, &actionParameter{
+			Parameter: a.Parameters[i],
+			ActionID:  a.ID,
+		}); err != nil {
 			return sdk.WrapError(err, "InsertActionParameter for %s failed", a.Parameters[i].Name)
 		}
 	}
 
-	if err := DeleteActionRequirements(db, a.ID); err != nil {
+	if err := DeleteRequirementsByActionID(db, a.ID); err != nil {
 		return err
 	}
 
@@ -260,46 +175,28 @@ func UpdateActionDB(db gorp.SqlExecutor, a *sdk.Action, userID int64) error {
 	}
 
 	for i := range a.Requirements {
-		if err := InsertActionRequirement(db, a.ID, a.Requirements[i]); err != nil {
+		r := a.Requirements[i]
+		r.ActionID = a.ID
+		if err := InsertRequirement(db, &r); err != nil {
 			return err
 		}
 	}
 
 	query := `UPDATE action SET name=$1, description=$2, type=$3, enabled=$4, deprecated=$5 WHERE id=$6`
 	_, errdb := db.Exec(query, a.Name, a.Description, string(a.Type), a.Enabled, a.Deprecated, a.ID)
-	return errdb
+	return sdk.WithStack(errdb)
 }
 
 // DeleteAction remove action from database
 func DeleteAction(db gorp.SqlExecutor, actionID, userID int64) error {
-
 	if err := insertAudit(db, actionID, userID, "Action delete"); err != nil {
 		return err
 	}
 
-	if err := deleteActionChildren(db, actionID); err != nil {
-		return err
+	if _, err := db.Exec(`DELETE FROM action WHERE action.id = $1`, actionID); err != nil {
+		return sdk.WithStack(err)
 	}
 
-	query := `DELETE FROM pipeline_action WHERE action_id = $1`
-	if _, err := db.Exec(query, actionID); err != nil {
-		return err
-	}
-
-	query = `DELETE FROM action_parameter WHERE action_id = $1`
-	if _, err := db.Exec(query, actionID); err != nil {
-		return err
-	}
-
-	query = `DELETE FROM action_requirement WHERE action_id = $1`
-	if _, err := db.Exec(query, actionID); err != nil {
-		return err
-	}
-
-	query = `DELETE FROM action WHERE action.id = $1`
-	if _, err := db.Exec(query, actionID); err != nil {
-		return err
-	}
 	return nil
 }
 
@@ -307,19 +204,17 @@ func DeleteAction(db gorp.SqlExecutor, actionID, userID int64) error {
 func Used(db gorp.SqlExecutor, actionID int64) (bool, error) {
 	var count int
 
-	query := `SELECT COUNT(id) FROM pipeline_action WHERE pipeline_action.action_id = $1`
-	if err := db.QueryRow(query, actionID).Scan(&count); err != nil {
-		return false, err
+	if err := db.QueryRow(`SELECT COUNT(id) FROM pipeline_action WHERE action_id = $1`, actionID).Scan(&count); err != nil {
+		return false, sdk.WithStack(err)
 	}
-
 	if count > 0 {
 		return true, nil
 	}
 
-	query = `SELECT COUNT(id) FROM action_edge WHERE child_id = $1`
-	if err := db.QueryRow(query, actionID).Scan(&count); err != nil {
-		return false, err
+	if err := db.QueryRow(`SELECT COUNT(id) FROM action_edge WHERE child_id = $1`, actionID).Scan(&count); err != nil {
+		return false, sdk.WithStack(err)
 	}
+
 	return count > 0, nil
 }
 
@@ -345,7 +240,7 @@ func isTreeLoopFree(db gorp.SqlExecutor, a *sdk.Action, parents []int64) (bool, 
 
 		// If child id is not provided, load it properly
 		if cobaye.ID == 0 {
-			cobaye, err = LoadPublicAction(db, cobaye.Name)
+			cobaye, err = LoadPublicByName(db, cobaye.Name)
 			if err != nil {
 				log.Warning("isTreeLoopFree> error on action %s: %s", child.Name, err)
 				return false, err
@@ -362,7 +257,7 @@ func isTreeLoopFree(db gorp.SqlExecutor, a *sdk.Action, parents []int64) (bool, 
 }
 
 func insertAudit(db gorp.SqlExecutor, actionID, userID int64, change string) error {
-	a, errLoad := LoadActionByID(db, actionID)
+	a, errLoad := LoadByID(db, actionID)
 	if errLoad != nil {
 		return errLoad
 	}

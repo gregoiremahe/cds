@@ -6,19 +6,21 @@ import (
 
 // Action is the base element of CDS pipeline
 type Action struct {
-	ID             int64         `json:"id" yaml:"-"`
-	Name           string        `json:"name" cli:"name,key"`
-	StepName       string        `json:"step_name,omitempty" yaml:"step_name,omitempty" cli:"step_name"`
-	Type           string        `json:"type" yaml:"-" cli:"type"`
-	Description    string        `json:"description" yaml:"desc,omitempty"`
-	Requirements   []Requirement `json:"requirements"`
-	Parameters     []Parameter   `json:"parameters"`
-	Actions        []Action      `json:"actions" yaml:"actions,omitempty"`
-	Enabled        bool          `json:"enabled" yaml:"-"`
-	Deprecated     bool          `json:"deprecated" yaml:"-"`
-	Optional       bool          `json:"optional" yaml:"-"`
-	AlwaysExecuted bool          `json:"always_executed" yaml:"-"`
-	LastModified   int64         `json:"last_modified" cli:"modified"`
+	ID          int64  `json:"id" yaml:"-" db:"id"`
+	Name        string `json:"name" cli:"name,key" db:"name"`
+	Type        string `json:"type" yaml:"-" cli:"type" db:"type"`
+	Description string `json:"description" yaml:"desc,omitempty" db:"description"`
+	Enabled     bool   `json:"enabled" yaml:"-" db:"enabled"`
+	Deprecated  bool   `json:"deprecated" yaml:"-" db:"deprecated"`
+	// aggregates from action_edge
+	StepName       string `json:"step_name,omitempty" yaml:"step_name,omitempty" cli:"step_name" db:"-"`
+	Optional       bool   `json:"optional" yaml:"-" db:"-"`
+	AlwaysExecuted bool   `json:"always_executed" yaml:"-" db:"-"`
+	// aggregates
+	Requirements []Requirement `json:"requirements" db:"-"`
+	Parameters   []Parameter   `json:"parameters" db:"-"`
+	Actions      []Action      `json:"actions" yaml:"actions,omitempty" db:"-"`
+	LastModified int64         `json:"last_modified" cli:"modified" db:"-"`
 }
 
 // ActionSummary is the light representation of an action for CDS event
@@ -96,4 +98,26 @@ func NewScriptAction(content string) Action {
 	a.Enabled = true
 	a.Parameters = append(a.Parameters, Parameter{Name: "script", Value: content})
 	return a
+}
+
+// ActionsToIDs returns ids for given actions list.
+func ActionsToIDs(as []*Action) []int64 {
+	var ids []int64
+	for i := range as {
+		ids = append(ids, as[i].ID)
+	}
+	return ids
+}
+
+// ActionsFilterNotTypes returns a list of actions filtered by types.
+func ActionsFilterNotTypes(as []*Action, ts ...string) []*Action {
+	var f []*Action
+	for i := range as {
+		for j := range ts {
+			if as[i].Type != ts[j] {
+				f = append(f, as[i])
+			}
+		}
+	}
+	return f
 }
