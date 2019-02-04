@@ -42,7 +42,8 @@ func get(db gorp.SqlExecutor, q gorpmapping.Query, ags ...actionAggregator) (*sd
 		return nil, sdk.WrapError(err, "cannot get action")
 	}
 	if !found {
-		return nil, nil
+		// TODO return nil and check in handler
+		return nil, sdk.WithStack(sdk.ErrNoAction)
 	}
 
 	for i := range ags {
