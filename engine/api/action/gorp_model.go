@@ -6,14 +6,26 @@ import (
 )
 
 type actionParameter struct {
-	sdk.Parameter
-	ActionID int64 `db:"action_id"`
+	ID          int64  `json:"id" yaml:"-" db:"id"`
+	ActionID    int64  `json:"action_id" yaml:"-" db:"action_id"`
+	Name        string `json:"name" db:"name"`
+	Type        string `json:"type" db:"type"`
+	Value       string `json:"value" db:"value"`
+	Description string `json:"description,omitempty" yaml:"desc,omitempty" db:"description"`
+	Advanced    bool   `json:"advanced,omitempty" yaml:"advanced,omitempty" db:"advanced"`
 }
 
 func actionParametersToParameters(aps []actionParameter) []sdk.Parameter {
 	ps := make([]sdk.Parameter, len(aps))
 	for i := range aps {
-		ps[i] = aps[i].Parameter
+		ps[i] = sdk.Parameter{
+			ID:          aps[i].ID,
+			Name:        aps[i].Name,
+			Type:        aps[i].Type,
+			Value:       aps[i].Value,
+			Description: aps[i].Description,
+			Advanced:    aps[i].Advanced,
+		}
 	}
 	return ps
 }
@@ -33,17 +45,17 @@ type actionEdge struct {
 }
 
 func actionEdgesToIDs(aes []*actionEdge) []int64 {
-	var ids []int64
+	ids := make([]int64, len(aes))
 	for i := range aes {
-		ids = append(ids, aes[i].ID)
+		ids[i] = aes[i].ID
 	}
 	return ids
 }
 
 func actionEdgesToChildIDs(aes []*actionEdge) []int64 {
-	var ids []int64
+	ids := make([]int64, len(aes))
 	for i := range aes {
-		ids = append(ids, aes[i].ChildID)
+		ids[i] = aes[i].ChildID
 	}
 	return ids
 }

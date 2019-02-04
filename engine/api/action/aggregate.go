@@ -14,7 +14,7 @@ func aggregateActionRequirements(db gorp.SqlExecutor, as ...*sdk.Action) error {
 		return err
 	}
 
-	m := make(map[int64][]sdk.Requirement)
+	m := make(map[int64][]sdk.Requirement, len(rs))
 	for i := range rs {
 		if _, ok := m[rs[i].ActionID]; !ok {
 			m[rs[i].ActionID] = make([]sdk.Requirement, 0)
@@ -36,7 +36,7 @@ func aggregateActionParameters(db gorp.SqlExecutor, as ...*sdk.Action) error {
 		return err
 	}
 
-	m := make(map[int64][]actionParameter)
+	m := make(map[int64][]actionParameter, len(ps))
 	for i := range ps {
 		if _, ok := m[ps[i].ActionID]; !ok {
 			m[ps[i].ActionID] = make([]actionParameter, 0)
@@ -64,7 +64,7 @@ func aggregateActionChildren(db gorp.SqlExecutor, as ...*sdk.Action) error {
 	if err != nil {
 		return err
 	}
-	mEdges := make(map[int64][]actionEdge)
+	mEdges := make(map[int64][]actionEdge, len(edges))
 	for i := range edges {
 		if _, ok := mEdges[edges[i].ParentID]; !ok {
 			mEdges[edges[i].ParentID] = make([]actionEdge, 0)
@@ -79,7 +79,7 @@ func aggregateActionChildren(db gorp.SqlExecutor, as ...*sdk.Action) error {
 			continue
 		}
 
-		var children []sdk.Action
+		children := make([]sdk.Action, len(edges))
 		for i := range edges {
 			// init child from edge child then override with edge attributes and parameters
 			child := *edges[i].Child
@@ -101,7 +101,7 @@ func aggregateActionChildren(db gorp.SqlExecutor, as ...*sdk.Action) error {
 			}
 			child.Parameters = params
 
-			children = append(children, child)
+			children[i] = child
 		}
 
 		actionsNotBuiltIn[i].Actions = children
@@ -146,7 +146,7 @@ func aggregateEdgeParameters(db gorp.SqlExecutor, es ...*actionEdge) error {
 		return err
 	}
 
-	m := make(map[int64][]actionEdgeParameter)
+	m := make(map[int64][]actionEdgeParameter, len(ps))
 	for i := range ps {
 		if _, ok := m[ps[i].ActionEdgeID]; !ok {
 			m[ps[i].ActionEdgeID] = make([]actionEdgeParameter, 0)
@@ -172,7 +172,6 @@ func aggregateEdgeChildren(db gorp.SqlExecutor, es ...*actionEdge) error {
 	for i := range children {
 		m[children[i].ID] = children[i]
 	}
-
 	for i := range es {
 		if child, ok := m[es[i].ChildID]; ok {
 			es[i].Child = &child

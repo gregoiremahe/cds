@@ -102,16 +102,16 @@ func NewScriptAction(content string) Action {
 
 // ActionsToIDs returns ids for given actions list.
 func ActionsToIDs(as []*Action) []int64 {
-	var ids []int64
+	ids := make([]int64, len(as))
 	for i := range as {
-		ids = append(ids, as[i].ID)
+		ids[i] = as[i].ID
 	}
 	return ids
 }
 
 // ActionsFilterNotTypes returns a list of actions filtered by types.
 func ActionsFilterNotTypes(as []*Action, ts ...string) []*Action {
-	var f []*Action
+	f := make([]*Action, 0, len(as))
 	for i := range as {
 		for j := range ts {
 			if as[i].Type != ts[j] {

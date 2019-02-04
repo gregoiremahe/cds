@@ -107,10 +107,14 @@ func InsertAction(tx gorp.SqlExecutor, a *sdk.Action, public bool) error {
 
 	for i := range a.Parameters {
 		if err := insertParameter(tx, &actionParameter{
-			Parameter: a.Parameters[i],
-			ActionID:  a.ID,
+			ActionID:    a.ID,
+			Name:        a.Parameters[i].Name,
+			Type:        a.Parameters[i].Type,
+			Value:       a.Parameters[i].Value,
+			Description: a.Parameters[i].Description,
+			Advanced:    a.Parameters[i].Advanced,
 		}); err != nil {
-			return sdk.WrapError(err, "Cannot InsertActionParameter %s", a.Parameters[i].Name)
+			return sdk.WrapError(err, "cannot InsertActionParameter %s", a.Parameters[i].Name)
 		}
 	}
 
@@ -127,7 +131,7 @@ func UpdateActionDB(db gorp.SqlExecutor, a *sdk.Action, userID int64) error {
 		return sdk.ErrActionLoop
 	}
 
-	if err := insertAudit(db, a.ID, userID, "Action update"); err != nil {
+	if err := insertAudit(db, a.ID, userID, "action update"); err != nil {
 		return err
 	}
 
@@ -154,10 +158,14 @@ func UpdateActionDB(db gorp.SqlExecutor, a *sdk.Action, userID int64) error {
 	}
 	for i := range a.Parameters {
 		if err := insertParameter(db, &actionParameter{
-			Parameter: a.Parameters[i],
-			ActionID:  a.ID,
+			ActionID:    a.ID,
+			Name:        a.Parameters[i].Name,
+			Type:        a.Parameters[i].Type,
+			Value:       a.Parameters[i].Value,
+			Description: a.Parameters[i].Description,
+			Advanced:    a.Parameters[i].Advanced,
 		}); err != nil {
-			return sdk.WrapError(err, "InsertActionParameter for %s failed", a.Parameters[i].Name)
+			return sdk.WrapError(err, "insertActionParameter for %s failed", a.Parameters[i].Name)
 		}
 	}
 
