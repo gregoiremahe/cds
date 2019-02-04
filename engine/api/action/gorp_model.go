@@ -61,8 +61,13 @@ func actionEdgesToChildIDs(aes []*actionEdge) []int64 {
 }
 
 type actionEdgeParameter struct {
-	sdk.Parameter
-	ActionEdgeID int64 `db:"action_edge_id"`
+	ID           int64  `json:"id" yaml:"-" db:"id"`
+	ActionEdgeID int64  `json:"action_id" yaml:"-" db:"action_edge_id"`
+	Name         string `json:"name" db:"name"`
+	Type         string `json:"type" db:"type"`
+	Value        string `json:"value" db:"value"`
+	Description  string `json:"description,omitempty" yaml:"desc,omitempty" db:"description"`
+	Advanced     bool   `json:"advanced,omitempty" yaml:"advanced,omitempty" db:"advanced"`
 }
 
 func init() {

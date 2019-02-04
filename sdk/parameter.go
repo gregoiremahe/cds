@@ -41,12 +41,12 @@ const (
 
 // Parameter can be a String/Date/Script/URL...
 type Parameter struct {
-	ID          int64  `json:"id" yaml:"-" db:"id"`
-	Name        string `json:"name" db:"name"`
-	Type        string `json:"type" db:"type"`
-	Value       string `json:"value" db:"value"`
-	Description string `json:"description,omitempty" yaml:"desc,omitempty" db:"description"`
-	Advanced    bool   `json:"advanced,omitempty" yaml:"advanced,omitempty" db:"advanced"`
+	ID          int64  `json:"id" yaml:"-"`
+	Name        string `json:"name"`
+	Type        string `json:"type"`
+	Value       string `json:"value"`
+	Description string `json:"description,omitempty" yaml:"desc,omitempty"`
+	Advanced    bool   `json:"advanced,omitempty" yaml:"advanced,omitempty"`
 }
 
 // CheckFunc is a function to check key of a map for map merge

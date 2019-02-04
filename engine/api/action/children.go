@@ -41,7 +41,11 @@ func insertActionChild(db gorp.SqlExecutor, actionID int64, child sdk.Action, ex
 
 		if err := insertEdgeParameter(db, &actionEdgeParameter{
 			ActionEdgeID: ae.ID,
-			Parameter:    child.Parameters[i],
+			Name:         child.Parameters[i].Name,
+			Type:         child.Parameters[i].Type,
+			Value:        child.Parameters[i].Value,
+			Description:  child.Parameters[i].Description,
+			Advanced:     child.Parameters[i].Advanced,
 		}); err != nil {
 			return err
 		}
