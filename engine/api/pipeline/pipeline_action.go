@@ -74,7 +74,7 @@ func InsertJob(db gorp.SqlExecutor, job *sdk.Job, stageID int64, pip *sdk.Pipeli
 	// Insert Joined Action
 	job.Action.Type = sdk.JoinedAction
 	log.Debug("InsertJob> Insert Action %s on pipeline %s with %d children", job.Action.Name, pip.Name, len(job.Action.Actions))
-	if err := action.InsertAction(db, &job.Action, false); err != nil {
+	if err := action.Insert(db, &job.Action); err != nil {
 		return err
 	}
 
@@ -163,13 +163,13 @@ func CheckJob(db gorp.SqlExecutor, job *sdk.Job) error {
 	for i := range job.Action.Actions {
 		step := &job.Action.Actions[i]
 		log.Debug("CheckJob> Checking step %s", step.Name)
-		a, err := action.LoadPublicByName(db, step.Name)
+		a, err := action.LoadTypeBuiltInOrDefaultByName(db, step.Name)
 		if err != nil {
 			if sdk.ErrorIs(err, sdk.ErrNoAction) {
 				errs = append(errs, sdk.NewMessage(sdk.MsgJobNotValidActionNotFound, job.Action.Name, step.Name, i+1))
 				continue
 			}
-			return sdk.WrapError(err, "Unable to load public action %s", step.Name)
+			return sdk.WrapError(err, "Unable to load action %s", step.Name)
 		}
 
 		for x := range step.Parameters {

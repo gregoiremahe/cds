@@ -1,7 +1,7 @@
-import {HttpClient} from '@angular/common/http';
-import {Injectable} from '@angular/core';
-import {Observable} from 'rxjs';
-import {Action, PipelineUsingAction} from '../../model/action.model';
+import { HttpClient } from '@angular/common/http';
+import { Injectable } from '@angular/core';
+import { Observable } from 'rxjs';
+import { Action, PipelineUsingAction } from '../../model/action.model';
 
 /**
  * Service to access Public Action
@@ -9,33 +9,23 @@ import {Action, PipelineUsingAction} from '../../model/action.model';
 @Injectable()
 export class ActionService {
 
-    constructor(private _http: HttpClient) {
-    }
+    constructor(private _http: HttpClient) { }
 
-    /**
-     * Get all types of parameters
-     * @returns {Observable<string[]>}
-     */
     getActions(): Observable<Action[]> {
         return this._http.get<Action[]>('/action');
     }
 
-    /**
-     * Get a action by his name
-     * @param name name of the action to get
-     * @returns {Observable<Action>}
-     */
-    getAction(name: string): Observable<Action> {
-        return this._http.get<Action>('/action/' + name);
+    get(groupName: string, name: string): Observable<Action> {
+        return this._http.get<Action>(`/action/${groupName}/${name}`);
     }
 
     /**
-     * Get pipelines using specified action
+     * Get action usage
      * @param name name of the action to get
      * @returns {Observable<PipelineUsingAction>}
      */
-    getPipelinesUsingAction(name: string): Observable<PipelineUsingAction[]> {
-        return this._http.get<PipelineUsingAction[]>('/action/' + name + '/using');
+    getUsage(name: string): Observable<Array<PipelineUsingAction>> {
+        return this._http.get<Array<PipelineUsingAction>>('/action/' + name + '/usage');
     }
 
     /**

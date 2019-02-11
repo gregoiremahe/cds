@@ -1,5 +1,6 @@
-import {Parameter} from './parameter.model';
-import {Requirement} from './requirement.model';
+import { Group } from './group.model';
+import { Parameter } from './parameter.model';
+import { Requirement } from './requirement.model';
 
 export class Action {
     id: number;
@@ -15,6 +16,7 @@ export class Action {
     last_modified: boolean;
     enabled: boolean;
     deprecated: boolean;
+    group: Group;
 
     // UI parameter
     hasChanged: boolean;
@@ -34,6 +36,6 @@ export class PipelineUsingAction {
 }
 
 export class ActionWarning {
-  type: string;
-  action: Action;
+    type: string;
+    action: Action;
 }

@@ -20,8 +20,6 @@ func getAll(db gorp.SqlExecutor, q gorpmapping.Query, ags ...actionAggregator) (
 			}
 		}
 	}
-
-	// TODO move this check to handler
 	if len(pas) == 0 {
 		return nil, sdk.WithStack(sdk.ErrNoAction)
 	}
@@ -42,7 +40,6 @@ func get(db gorp.SqlExecutor, q gorpmapping.Query, ags ...actionAggregator) (*sd
 		return nil, sdk.WrapError(err, "cannot get action")
 	}
 	if !found {
-		// TODO return nil and check in handler
 		return nil, sdk.WithStack(sdk.ErrNoAction)
 	}
 
@@ -53,6 +50,11 @@ func get(db gorp.SqlExecutor, q gorpmapping.Query, ags ...actionAggregator) (*sd
 	}
 
 	return &a, nil
+}
+
+// insert action in database.
+func insert(db gorp.SqlExecutor, a *sdk.Action) error {
+	return sdk.WithStack(db.Insert(a))
 }
 
 // DeleteRequirementsByActionID deletes all requirements related to given action.

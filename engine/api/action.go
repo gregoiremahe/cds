@@ -11,44 +11,273 @@ import (
 
 	"github.com/ovh/cds/engine/api/action"
 	"github.com/ovh/cds/engine/api/event"
+	"github.com/ovh/cds/engine/api/group"
 	"github.com/ovh/cds/engine/service"
 	"github.com/ovh/cds/sdk"
 	"github.com/ovh/cds/sdk/exportentities"
 	"github.com/ovh/cds/sdk/log"
 )
 
-// getActionsHandler Retrieve all public actions
-// @title List all public actions
-func (api *API) getActionsHandler() service.Handler {
-	return func(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
-		acts, err := action.LoadAll(api.mustDB())
-		if err != nil {
-			return sdk.WrapError(err, "GetActions: Cannot load action from db")
+const (
+	contextAction contextKey = iota
+)
+
+func (api *API) middlewareAction(needAdmin bool) func(ctx context.Context, w http.ResponseWriter, r *http.Request) (context.Context, error) {
+	return func(ctx context.Context, w http.ResponseWriter, r *http.Request) (context.Context, error) {
+		// try to get action for given path that match user's groups with/without admin grants
+		vars := mux.Vars(r)
+
+		groupName := vars["groupName"]
+		actionName := vars["actionName"]
+
+		if groupName == "" || actionName == "" {
+			return nil, sdk.WrapError(sdk.ErrWrongRequest, "invalid given group or action name")
 		}
-		return service.WriteJSON(w, acts, http.StatusOK)
+
+		u := deprecatedGetUser(ctx)
+
+		// check that group exists
+		g, err := group.LoadGroup(api.mustDB(), groupName)
+		if err != nil {
+			return nil, err
+		}
+
+		if needAdmin {
+			if err := group.CheckUserIsGroupAdmin(g, u); err != nil {
+				return nil, err
+			}
+		} else {
+			if err := group.CheckUserIsGroupMember(g, u); err != nil {
+				return nil, err
+			}
+		}
+
+		a, err := action.LoadTypeBuiltInOrDefaultByNameAndGroupID(api.mustDB(), actionName, g.ID)
+		if err != nil {
+			return nil, err
+		}
+
+		return context.WithValue(ctx, contextAction, a), nil
 	}
 }
 
-func (api *API) getPipelinesUsingActionHandler() service.Handler {
+func getAction(c context.Context) *sdk.Action {
+	i := c.Value(contextAction)
+	if i == nil {
+		return nil
+	}
+	a, ok := i.(*sdk.Action)
+	if !ok {
+		return nil
+	}
+	return a
+}
+
+func (api *API) getActionsHandler() service.Handler {
 	return func(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
-		// Get action name in URL
-		vars := mux.Vars(r)
-		name := vars["actionName"]
-		response, err := action.GetPipelineUsingAction(api.mustDB(), name)
+		u := deprecatedGetUser(ctx)
+
+		var as []sdk.Action
+		var err error
+		if u.Admin {
+			as, err = action.LoadAllTypeBuiltInOrDefault(
+				api.mustDB(),
+				group.AggregateOnAction,
+			)
+		} else {
+			as, err = action.LoadAllTypeBuiltInOrDefaultByGroupIDs(
+				api.mustDB(),
+				append(sdk.GroupsToIDs(u.Groups), group.SharedInfraGroup.ID),
+				group.AggregateOnAction,
+			)
+		}
 		if err != nil {
 			return err
 		}
-		return service.WriteJSON(w, response, http.StatusOK)
+
+		return service.WriteJSON(w, as, http.StatusOK)
 	}
 }
 
-func (api *API) getActionsRequirements() service.Handler {
+func (api *API) postActionHandler() service.Handler {
 	return func(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
-		rs, err := action.GetRequirementsDistinctBinary(api.mustDB())
-		if err != nil {
-			return sdk.WrapError(err, "cannot load action requirements")
+		var data sdk.Action
+		if err := service.UnmarshalBody(r, &data); err != nil {
+			return err
 		}
-		return service.WriteJSON(w, rs, http.StatusOK)
+		if err := data.IsValid(); err != nil {
+			return err
+		}
+
+		// check that the group exists and user is admin for group id
+		grp, err := group.LoadGroupByID(api.mustDB(), *data.GroupID)
+		if err != nil {
+			return err
+		}
+
+		u := deprecatedGetUser(ctx)
+
+		if err := group.CheckUserIsGroupAdmin(grp, u); err != nil {
+			return err
+		}
+
+		tx, err := api.mustDB().Begin()
+		if err != nil {
+			return sdk.WithStack(err)
+		}
+		defer tx.Rollback()
+
+		// check that no action already exists for same group/name
+		current, err := action.LoadTypeBuiltInOrDefaultByNameAndGroupID(tx, data.Name, grp.ID)
+		if err != nil && !sdk.ErrorIs(err, sdk.ErrNoAction) {
+			return err
+		}
+		if current != nil {
+			return sdk.NewErrorFrom(sdk.ErrAlreadyExist, "an action already exists for given name on this group")
+		}
+
+		// only default action can be posted or updated
+		data.Type = sdk.DefaultAction
+
+		// only action from action's group and shared.infra can be used as child
+		if err := action.CheckChildrenForGroupIDs(tx, &data, []int64{group.SharedInfraGroup.ID, grp.ID}); err != nil {
+			return err
+		}
+
+		// inserts action and components
+		if err := action.Insert(tx, &data); err != nil {
+			return err
+		}
+
+		if err := tx.Commit(); err != nil {
+			return sdk.WithStack(err)
+		}
+
+		event.PublishActionAdd(data, u)
+
+		if err := group.AggregateOnAction(api.mustDB(), &data); err != nil {
+			return err
+		}
+
+		return service.WriteJSON(w, data, http.StatusOK)
+	}
+}
+
+func (api *API) getActionHandler() service.Handler {
+	return func(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
+		ctx, err := api.middlewareAction(false)(ctx, w, r)
+		if err != nil {
+			return err
+		}
+
+		a := getAction(ctx)
+
+		if err := group.AggregateOnAction(api.mustDB(), a); err != nil {
+			return err
+		}
+
+		return service.WriteJSON(w, a, http.StatusOK)
+	}
+}
+
+func (api *API) putActionHandler() service.Handler {
+	return func(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
+		ctx, err := api.middlewareAction(true)(ctx, w, r)
+		if err != nil {
+			return err
+		}
+
+		a := getAction(ctx)
+
+		var data sdk.Action
+		if err := service.UnmarshalBody(r, &data); err != nil {
+			return err
+		}
+		if err := data.IsValid(); err != nil {
+			return err
+		}
+
+		// check that the group exists and user is admin for group id
+		grp, err := group.LoadGroupByID(api.mustDB(), *data.GroupID)
+		if err != nil {
+			return err
+		}
+
+		// TODO in case of group change, we need to check if current action is used
+
+		u := deprecatedGetUser(ctx)
+
+		if err := group.CheckUserIsGroupAdmin(grp, u); err != nil {
+			return err
+		}
+
+		tx, err := api.mustDB().Begin()
+		if err != nil {
+			return sdk.WrapError(err, "cannot begin transaction")
+		}
+		defer tx.Rollback()
+
+		// only default action can be posted or updated
+		data.ID = a.ID
+		data.Type = sdk.DefaultAction
+
+		// only action from action's group and shared.infra can be used as child
+		if err := action.CheckChildrenForGroupIDsWithLoop(tx, &data, []int64{group.SharedInfraGroup.ID, grp.ID}); err != nil {
+			return err
+		}
+
+		if err = action.UpdateActionDB(tx, &data, deprecatedGetUser(ctx).ID); err != nil {
+			return sdk.WrapError(err, "cannot update action")
+		}
+
+		if err = tx.Commit(); err != nil {
+			return sdk.WrapError(err, "cannot commit transaction")
+		}
+
+		event.PublishActionUpdate(*a, data, deprecatedGetUser(ctx))
+
+		return service.WriteJSON(w, data, http.StatusOK)
+	}
+}
+
+func (api *API) getActionAuditHandler() service.Handler {
+	return func(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
+		actionID, err := requestVarInt(r, "actionID")
+		if err != nil {
+			return err
+		}
+
+		a, err := action.LoadAuditAction(api.mustDB(), actionID, true)
+		if err != nil {
+			return sdk.WrapError(err, "cannot load audit for action %d", actionID)
+		}
+
+		return service.WriteJSON(w, a, http.StatusOK)
+	}
+}
+
+func (api *API) getActionUsageHandler() service.Handler {
+	return func(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
+		ctx, err := api.middlewareAction(true)(ctx, w, r)
+		if err != nil {
+			return err
+		}
+
+		a := getAction(ctx)
+
+		pus, err := action.GetPipelineUsages(api.mustDB(), a.ID)
+		if err != nil {
+			return err
+		}
+		aus, err := action.GetActionUsages(api.mustDB(), a.ID)
+		if err != nil {
+			return err
+		}
+
+		return service.WriteJSON(w, action.Usage{
+			Pipelines: pus,
+			Actions:   aus,
+		}, http.StatusOK)
 	}
 }
 
@@ -56,9 +285,9 @@ func (api *API) deleteActionHandler() service.Handler {
 	return func(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
 		// Get action name in URL
 		vars := mux.Vars(r)
-		name := vars["permActionName"]
+		name := vars["actionName"]
 
-		a, errLoad := action.LoadPublicByName(api.mustDB(), name)
+		a, errLoad := action.LoadTypeBuiltInOrDefaultByName(api.mustDB(), name)
 		if errLoad != nil {
 			if !sdk.ErrorIs(errLoad, sdk.ErrNoAction) {
 				log.Warning("deleteAction> Cannot load action %s: %T %s", name, errLoad, errLoad)
@@ -94,117 +323,10 @@ func (api *API) deleteActionHandler() service.Handler {
 	}
 }
 
-func (api *API) putActionHandler() service.Handler {
-	return func(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
-		// Get action name in URL
-		vars := mux.Vars(r)
-		name := vars["permActionName"]
-
-		// Get body
-		var a sdk.Action
-		if err := service.UnmarshalBody(r, &a); err != nil {
-			return err
-		}
-
-		// Check that action  already exists
-		actionDB, err := action.LoadPublicByName(api.mustDB(), name)
-		if err != nil {
-			return sdk.WrapError(err, "cannot check if action %s exist", a.Name)
-		}
-
-		tx, err := api.mustDB().Begin()
-		if err != nil {
-			return sdk.WrapError(err, "cannot begin transaction")
-		}
-		defer tx.Rollback()
-
-		a.ID = actionDB.ID
-
-		if err = action.UpdateActionDB(tx, &a, deprecatedGetUser(ctx).ID); err != nil {
-			return sdk.WrapError(err, "cannot update action")
-		}
-
-		if err = tx.Commit(); err != nil {
-			return sdk.WrapError(err, "cannot commit transaction")
-		}
-
-		event.PublishActionUpdate(*actionDB, a, deprecatedGetUser(ctx))
-
-		return service.WriteJSON(w, a, http.StatusOK)
-	}
-}
-
-func (api *API) postActionHandler() service.Handler {
-	return func(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
-		var a sdk.Action
-		if err := service.UnmarshalBody(r, &a); err != nil {
-			return err
-		}
-
-		// Check that action does not already exists
-		conflict, errConflict := action.Exists(api.mustDB(), a.Name)
-		if errConflict != nil {
-			return errConflict
-		}
-		if conflict {
-			return sdk.WrapError(sdk.ErrConflict, "addAction> Action %s already exists", a.Name)
-		}
-
-		tx, errDB := api.mustDB().Begin()
-		if errDB != nil {
-			return errDB
-		}
-		defer tx.Rollback()
-
-		a.Type = sdk.DefaultAction
-		if err := action.InsertAction(tx, &a, true); err != nil {
-			return sdk.WrapError(err, "Action: Cannot insert action")
-		}
-
-		if err := tx.Commit(); err != nil {
-			return err
-		}
-
-		event.PublishActionAdd(a, deprecatedGetUser(ctx))
-
-		return service.WriteJSON(w, a, http.StatusOK)
-	}
-}
-
-func (api *API) getActionAuditHandler() service.Handler {
-	return func(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
-		actionID, err := requestVarInt(r, "actionID")
-		if err != nil {
-			return err
-		}
-
-		a, err := action.LoadAuditAction(api.mustDB(), actionID, true)
-		if err != nil {
-			return sdk.WrapError(err, "cannot load audit for action %d", actionID)
-		}
-
-		return service.WriteJSON(w, a, http.StatusOK)
-	}
-}
-
-func (api *API) getActionHandler() service.Handler {
-	return func(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
-		vars := mux.Vars(r)
-		name := vars["permActionName"]
-
-		a, err := action.LoadPublicByName(api.mustDB(), name)
-		if err != nil {
-			return sdk.NewError(sdk.ErrNotFound, err)
-		}
-
-		return service.WriteJSON(w, a, http.StatusOK)
-	}
-}
-
 func (api *API) getActionExportHandler() service.Handler {
 	return func(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
 		vars := mux.Vars(r)
-		name := vars["permActionName"]
+		name := vars["actionName"]
 
 		format := FormString(r, "format")
 		if format == "" {
@@ -271,29 +393,29 @@ func (api *API) importActionHandler() service.Handler {
 		}
 		defer tx.Rollback()
 
-		//Check if action exists
+		// check if action exists
 		exist := false
-		existingAction, errload := action.LoadPublicByName(tx, a.Name)
+		existingAction, errload := action.LoadTypeBuiltInOrDefaultByName(tx, a.Name)
 		if errload == nil {
 			exist = true
 			a.ID = existingAction.ID
 		}
 
-		//http code status
+		// http code status
 		var code int
 
-		//Update or Insert the action
+		// update or Insert the action
 		if exist {
 			if err := action.UpdateActionDB(tx, a, deprecatedGetUser(ctx).ID); err != nil {
 				return err
 			}
-			code = 200
+			code = http.StatusOK
 		} else {
 			a.Type = sdk.DefaultAction
-			if err := action.InsertAction(tx, a, true); err != nil {
+			if err := action.Insert(tx, a); err != nil {
 				return err
 			}
-			code = 201
+			code = http.StatusCreated
 		}
 
 		if err := tx.Commit(); err != nil {
@@ -307,5 +429,16 @@ func (api *API) importActionHandler() service.Handler {
 		}
 
 		return service.WriteJSON(w, a, code)
+	}
+}
+
+func (api *API) getActionsRequirements() service.Handler {
+	return func(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
+		rs, err := action.GetRequirementsDistinctBinary(api.mustDB())
+		if err != nil {
+			return sdk.WrapError(err, "cannot load action requirements")
+		}
+
+		return service.WriteJSON(w, rs, http.StatusOK)
 	}
 }

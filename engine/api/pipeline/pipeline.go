@@ -33,9 +33,9 @@ func LoadPipeline(db gorp.SqlExecutor, projectKey, name string, deep bool) (*sdk
 	err := db.QueryRow(query, name, projectKey).Scan(&p.ID, &p.Name, &p.Description, &p.ProjectID, &p.Type, &lastModified)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, sdk.ErrPipelineNotFound
+			return nil, sdk.WithStack(sdk.ErrPipelineNotFound)
 		}
-		return nil, err
+		return nil, sdk.WithStack(err)
 	}
 	p.LastModified = lastModified.Unix()
 	p.ProjectKey = projectKey
@@ -99,7 +99,7 @@ func LoadPipelineByID(ctx context.Context, db gorp.SqlExecutor, pipelineID int64
 func LoadByWorkerModelName(db gorp.SqlExecutor, workerModelName string, u *sdk.User) ([]sdk.Pipeline, error) {
 	var pips []sdk.Pipeline
 	query := `
-	SELECT DISTINCT pipeline.*, project.projectkey AS projectKey 
+	SELECT DISTINCT pipeline.*, project.projectkey AS projectKey
 		FROM action_requirement
 			JOIN pipeline_action ON action_requirement.action_id = pipeline_action.action_id
 			JOIN pipeline_stage ON pipeline_action.pipeline_stage_id = pipeline_stage.id
@@ -110,7 +110,7 @@ func LoadByWorkerModelName(db gorp.SqlExecutor, workerModelName string, u *sdk.U
 
 	if !u.Admin {
 		query = `
-	SELECT DISTINCT pipeline.*, project.projectkey AS projectKey 
+	SELECT DISTINCT pipeline.*, project.projectkey AS projectKey
 		FROM action_requirement
 			JOIN pipeline_action ON action_requirement.action_id = pipeline_action.action_id
 			JOIN pipeline_stage ON pipeline_action.pipeline_stage_id = pipeline_stage.id
@@ -357,9 +357,9 @@ func LoadGroupByPipeline(ctx context.Context, db gorp.SqlExecutor, pipeline *sdk
 	 		  JOIN pipeline_group ON pipeline_group.group_id = "group".id
 	 		  WHERE pipeline_group.pipeline_id = $1 ORDER BY "group".name ASC`
 
-	rows, errq := db.Query(query, pipeline.ID)
-	if errq != nil {
-		return errq
+	rows, err := db.Query(query, pipeline.ID)
+	if err != nil {
+		return sdk.WithStack(err)
 	}
 	defer rows.Close()
 
@@ -367,7 +367,7 @@ func LoadGroupByPipeline(ctx context.Context, db gorp.SqlExecutor, pipeline *sdk
 		var group sdk.Group
 		var perm int
 		if err := rows.Scan(&group.ID, &group.Name, &perm); err != nil {
-			return err
+			return sdk.WithStack(err)
 		}
 		pipeline.GroupPermission = append(pipeline.GroupPermission, sdk.GroupPermission{
 			Group:      group,

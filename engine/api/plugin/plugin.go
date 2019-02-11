@@ -22,7 +22,7 @@ func AddBinary(db gorp.SqlExecutor, p *sdk.GRPCPlugin, b *sdk.GRPCPluginBinary, 
 	p.Binaries = append(p.Binaries, *b)
 
 	if p.Type == sdk.GRPCPluginAction {
-		act, errA := action.LoadPublicByName(db, p.Name)
+		act, errA := action.LoadTypePluginByName(db, p.Name)
 		if errA != nil {
 			return sdk.WrapError(errA, "cannot load public action for plugin type action")
 		}
@@ -77,7 +77,7 @@ func UpdateBinary(db gorp.SqlExecutor, p *sdk.GRPCPlugin, b *sdk.GRPCPluginBinar
 	p.Binaries[index] = *b
 
 	if p.Type == sdk.GRPCPluginAction {
-		act, errA := action.LoadPublicByName(db, p.Name)
+		act, errA := action.LoadTypePluginByName(db, p.Name)
 		if errA != nil {
 			return sdk.WrapError(errA, "cannot load public action for plugin type action")
 		}

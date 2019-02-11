@@ -29,7 +29,7 @@ import (
 )
 
 const (
-	contextWorkflowTemplate contextKey = iota
+	contextWorkflowTemplate string = "workflow_template"
 )
 
 func (api *API) middlewareTemplate(needAdmin bool) func(ctx context.Context, w http.ResponseWriter, r *http.Request) (context.Context, error) {
@@ -42,7 +42,7 @@ func (api *API) middlewareTemplate(needAdmin bool) func(ctx context.Context, w h
 		templateSlug := vars["templateSlug"]
 
 		if id == 0 && (groupName == "" || templateSlug == "" || !slug.Valid(templateSlug)) {
-			return nil, sdk.WrapError(sdk.ErrWrongRequest, "Invalid given id or group and template slug")
+			return nil, sdk.WrapError(sdk.ErrWrongRequest, "invalid given id or group and template slug")
 		}
 
 		u := deprecatedGetUser(ctx)

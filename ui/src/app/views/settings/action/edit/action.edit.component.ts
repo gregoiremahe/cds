@@ -38,12 +38,12 @@ export class ActionEditComponent implements OnInit {
 
     ngOnInit() {
         this.paramsSub = this._route.params.subscribe(params => {
-            this._actionService.getAction(params['name']).subscribe(u => {
+            this._actionService.get(params['groupName'], params['actionName']).subscribe(u => {
                 this.action = u;
                 let re = /\s/gi;
                 this.actionDoc = u.name.toLowerCase().replace(re, '-');
                 if (this.isAdmin) {
-                    this._actionService.getPipelinesUsingAction(params['name']).pipe(first()).subscribe(p => {
+                    this._actionService.getUsage(params['name']).pipe(first()).subscribe(p => {
                         this.pipelinesUsingAction = p;
                     });
                 }

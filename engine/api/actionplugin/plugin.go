@@ -5,7 +5,6 @@ import (
 
 	"github.com/ovh/cds/engine/api/action"
 	"github.com/ovh/cds/sdk"
-	"github.com/ovh/cds/sdk/log"
 )
 
 //InsertWithGRPCPlugin create action in database
@@ -25,8 +24,7 @@ func InsertWithGRPCPlugin(db gorp.SqlExecutor, pl *sdk.GRPCPlugin, params []sdk.
 		Enabled:    true,
 	}
 
-	if err := action.InsertAction(db, &a, true); err != nil {
-		log.Warning("plugin.Insert> Action: Cannot insert action: %s\n", err)
+	if err := action.Insert(db, &a); err != nil {
 		return nil, err
 	}
 
@@ -50,7 +48,7 @@ func UpdateGRPCPlugin(db gorp.SqlExecutor, pl *sdk.GRPCPlugin, params []sdk.Para
 		Enabled:    true,
 	}
 
-	oldA, err := action.LoadPublicByName(db, a.Name)
+	oldA, err := action.LoadTypePluginByName(db, a.Name)
 	if err != nil {
 		return nil, err
 	}

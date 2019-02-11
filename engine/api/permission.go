@@ -26,7 +26,6 @@ func permissionFunc(api *API) map[string]PermCheckFunc {
 		"permApplicationName": api.checkApplicationPermissions,
 		"permWorkflowName":    api.checkWorkflowPermissions,
 		"permGroupName":       api.checkGroupPermissions,
-		"permActionName":      api.checkActionPermissions,
 		"permEnvironmentName": api.checkEnvironmentPermissions,
 		"permModelID":         api.checkWorkerModelPermissions,
 	}
@@ -200,18 +199,6 @@ func (api *API) checkGroupPermissions(ctx context.Context, groupName string, per
 				}
 			}
 		}
-	}
-
-	return false
-}
-
-func (api *API) checkActionPermissions(ctx context.Context, groupName string, permissionValue int, routeVar map[string]string) bool {
-	if permissionValue == permission.PermissionRead {
-		return true
-	}
-
-	if permissionValue != permission.PermissionRead && deprecatedGetUser(ctx).Admin {
-		return true
 	}
 
 	return false

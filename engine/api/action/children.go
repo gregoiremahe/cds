@@ -1,7 +1,6 @@
 package action
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/go-gorp/gorp"
@@ -9,11 +8,7 @@ import (
 	"github.com/ovh/cds/sdk"
 )
 
-func insertActionChild(db gorp.SqlExecutor, actionID int64, child sdk.Action, execOrder int) error {
-	if child.ID == 0 {
-		return sdk.WithStack(fmt.Errorf("child action has no id"))
-	}
-
+func insertActionChild(db gorp.SqlExecutor, child sdk.Action, actionID int64, execOrder int) error {
 	// useful to not save a step_name if it's the same than the default name (for ascode)
 	if strings.ToLower(child.Name) == strings.ToLower(child.StepName) {
 		child.StepName = ""

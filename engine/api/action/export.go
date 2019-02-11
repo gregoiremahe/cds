@@ -11,7 +11,7 @@ import (
 
 // Export an action
 func Export(db gorp.SqlExecutor, name string, f exportentities.Format, w io.Writer) (int, error) {
-	a, err := LoadPublicByName(db, name)
+	a, err := LoadTypeBuiltInOrDefaultByName(db, name)
 	if err != nil {
 		return 0, err
 	}
