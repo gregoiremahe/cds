@@ -203,8 +203,6 @@ func (api *API) putActionHandler() service.Handler {
 			return err
 		}
 
-		// TODO in case of group change, we need to check if current action is used
-
 		u := deprecatedGetUser(ctx)
 
 		if err := group.CheckUserIsGroupAdmin(grp, u); err != nil {
@@ -232,6 +230,10 @@ func (api *API) putActionHandler() service.Handler {
 
 		if err = tx.Commit(); err != nil {
 			return sdk.WrapError(err, "cannot commit transaction")
+		}
+
+		if err := group.AggregateOnAction(api.mustDB(), &data); err != nil {
+			return err
 		}
 
 		event.PublishActionUpdate(*a, data, deprecatedGetUser(ctx))
@@ -265,11 +267,11 @@ func (api *API) getActionUsageHandler() service.Handler {
 
 		a := getAction(ctx)
 
-		pus, err := action.GetPipelineUsages(api.mustDB(), a.ID)
+		pus, err := action.GetPipelineUsages(api.mustDB(), group.SharedInfraGroup.ID, a.ID)
 		if err != nil {
 			return err
 		}
-		aus, err := action.GetActionUsages(api.mustDB(), a.ID)
+		aus, err := action.GetActionUsages(api.mustDB(), group.SharedInfraGroup.ID, a.ID)
 		if err != nil {
 			return err
 		}

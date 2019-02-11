@@ -174,8 +174,8 @@ func UpdateActionDB(db gorp.SqlExecutor, a *sdk.Action, userID int64) error {
 		}
 	}
 
-	query := `UPDATE action SET name=$1, description=$2, type=$3, enabled=$4, deprecated=$5 WHERE id=$6`
-	_, errdb := db.Exec(query, a.Name, a.Description, string(a.Type), a.Enabled, a.Deprecated, a.ID)
+	query := `UPDATE action SET name=$1, description=$2, type=$3, enabled=$4, deprecated=$5, group_id=$6 WHERE id=$7`
+	_, errdb := db.Exec(query, a.Name, a.Description, string(a.Type), a.Enabled, a.Deprecated, a.GroupID, a.ID)
 	return sdk.WithStack(errdb)
 }
 

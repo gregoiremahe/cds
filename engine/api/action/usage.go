@@ -31,7 +31,7 @@ type UsagePipeline struct {
 }
 
 // GetPipelineUsages returns the list of pipelines using an action
-func GetPipelineUsages(db gorp.SqlExecutor, actionID int64) ([]UsagePipeline, error) {
+func GetPipelineUsages(db gorp.SqlExecutor, sharedInfraGroupID, actionID int64) ([]UsagePipeline, error) {
 	rows, err := db.Query(`
     SELECT
       project.id as projectId, project.projectKey as projectKey, project.name as projectName,
@@ -39,7 +39,7 @@ func GetPipelineUsages(db gorp.SqlExecutor, actionID int64) ([]UsagePipeline, er
       pipeline_stage.id as stageId, pipeline_stage.name as stageName,
       parent.id as jobId, parent.name as jobName,
       action.id as actionId, action.name as actionName,
-      CAST((CASE WHEN project_group.role IS NOT NULL THEN 0 ELSE 1 END) AS BIT) as warning
+      CAST((CASE WHEN project_group.role IS NOT NULL OR action.group_id = $1 THEN 0 ELSE 1 END) AS BIT) as warning
 		FROM action
     INNER JOIN action_edge ON action_edge.child_id = action.id
     LEFT JOIN action as parent ON parent.id = action_edge.parent_id
@@ -48,9 +48,9 @@ func GetPipelineUsages(db gorp.SqlExecutor, actionID int64) ([]UsagePipeline, er
 		LEFT JOIN pipeline ON pipeline.id = pipeline_stage.pipeline_id
     LEFT JOIN project ON pipeline.project_id = project.id
     LEFT JOIN project_group ON project_group.project_id = project.id AND project_group.group_id = action.group_id
-		WHERE action.id = $1
+		WHERE action.id = $2
 		ORDER BY projectkey, pipelineName, actionName;
-	`, actionID)
+	`, sharedInfraGroupID, actionID)
 	if err != nil {
 		return nil, sdk.WrapError(err, "cannot load pipeline usages for action with id %d", actionID)
 	}
@@ -85,18 +85,18 @@ type UsageAction struct {
 }
 
 // GetActionUsages returns the list of actions using an action
-func GetActionUsages(db gorp.SqlExecutor, actionID int64) ([]UsageAction, error) {
+func GetActionUsages(db gorp.SqlExecutor, sharedInfraGroupID, actionID int64) ([]UsageAction, error) {
 	rows, err := db.Query(`
     SELECT
       parent.id as parentActionId, parent.name as parentActionName,
       action.id as actionId, action.name as actionName,
-      CAST((CASE WHEN action.group_id = parent.group_id THEN 0 ELSE 1 END) AS BIT) as warning
+      CAST((CASE WHEN action.group_id = parent.group_id OR action.group_id = $1 THEN 0 ELSE 1 END) AS BIT) as warning
 		FROM action
 		INNER JOIN action_edge ON action_edge.child_id = action.id
 		LEFT JOIN action as parent ON parent.id = action_edge.parent_id
-		WHERE action.id = $1 AND parent.group_id IS NOT NULL
+		WHERE action.id = $2 AND parent.group_id IS NOT NULL
 		ORDER BY parentActionName, actionName;
-	`, actionID)
+	`, sharedInfraGroupID, actionID)
 	if err != nil {
 		return nil, sdk.WrapError(err, "cannot load pipeline usages for action with id %d", actionID)
 	}
