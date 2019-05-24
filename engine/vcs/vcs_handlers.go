@@ -547,6 +547,7 @@ func (s *Service) getCommitStatusHandler() service.Handler {
 			return sdk.WrapError(err, "Unable to get authorized client %s %s/%s", name, owner, repo)
 		}
 
+		log.Trace("vcs.handler.getCommitStatusHandler> commit_id:%s", commit)
 		statuses, err := client.ListStatuses(ctx, fmt.Sprintf("%s/%s", owner, repo), commit)
 		if err != nil {
 			return sdk.WrapError(err, "Unable to get commit %s statuses on %s/%s", commit, owner, repo)
@@ -798,6 +799,7 @@ func (s *Service) postFilterEventsHandler() service.Handler {
 }
 
 func (s *Service) postStatusHandler() service.Handler {
+	log.Trace("vcs.postStatusHandler> doing")
 	return func(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
 		name := muxVar(r, "name")
 

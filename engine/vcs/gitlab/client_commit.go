@@ -7,6 +7,7 @@ import (
 	"github.com/xanzy/go-gitlab"
 
 	"github.com/ovh/cds/sdk"
+	"github.com/ovh/cds/sdk/log"
 )
 
 //Commits returns commit data from a given starting commit, between two commits
@@ -15,21 +16,26 @@ func (c *gitlabClient) Commits(ctx context.Context, repo, branch, since, until s
 	// Gitlab commit listing only allow 'since' and 'until' parameter as dates
 	// Need to fetch commit date, then use it to filter
 
+	log.Trace("vcs.gitlab.Commits> repo:%s, branch:%s, since:%s, until:%s", repo, branch, since, until)
+
 	opt := &gitlab.ListCommitsOptions{
 		RefName: &branch,
 	}
+	log.Trace("vcs.gitlab.Commits> opt:%s", opt)
 
 	commit, err := c.Commit(ctx, repo, since)
 	if err == nil {
 		since := time.Unix(commit.Timestamp, 0)
 		opt.Since = &since
 	}
+	log.Trace("vcs.gitlab.Commits> since commit:%s", commit)
 
 	commit, err = c.Commit(ctx, repo, until)
 	if err == nil {
 		since := time.Unix(commit.Timestamp, 0)
 		opt.Since = &since
 	}
+	log.Trace("vcs.gitlab.Commits> until commit:%s", commit)
 
 	commits, _, err := c.client.Commits.ListCommits(repo, opt)
 	if err != nil {
@@ -38,6 +44,7 @@ func (c *gitlabClient) Commits(ctx context.Context, repo, branch, since, until s
 
 	vcscommits := make([]sdk.VCSCommit, len(commits))
 	for i, c := range commits {
+		log.Trace("vcs.gitlab.Commits> for x in commits : commitID:%s", c.ID)
 		vcscommits[i] = sdk.VCSCommit{
 			Hash: c.ID,
 			Author: sdk.VCSAuthor{
