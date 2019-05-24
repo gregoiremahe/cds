@@ -504,7 +504,7 @@ github.com/sguiheux/go-coverage
 # github.com/shirou/gopsutil v0.0.0-20170406131756-e49a95f3d5f8
 github.com/shirou/gopsutil/mem
 github.com/shirou/gopsutil/internal/common
-# github.com/sirupsen/logrus v1.0.6
+# github.com/sirupsen/logrus v1.4.2
 github.com/sirupsen/logrus
 # github.com/skratchdot/open-golang v0.0.0-20160302144031-75fb7ed4208c
 github.com/skratchdot/open-golang/open
