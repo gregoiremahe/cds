@@ -47,6 +47,8 @@ func SetLogger(l Logger) {
 // Initialize init log level
 func Initialize(conf *Conf) {
 	switch conf.Level {
+	case "trace":
+		log.SetLevel(log.TraceLevel)
 	case "debug":
 		log.SetLevel(log.DebugLevel)
 	case "info":
@@ -118,6 +120,15 @@ func Initialize(conf *Conf) {
 			hook.Flush()
 		}
 	}()
+}
+
+// Trace prints trace log
+func Trace(format string, values ...interface{}) {
+	if logger != nil {
+		logger.Logf("[TRACE]    "+format, values...)
+	} else {
+		log.Tracef(format, values...)
+	}
 }
 
 // Debug prints debug log
