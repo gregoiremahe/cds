@@ -133,7 +133,7 @@ func (c *gitlabClient) SetStatus(ctx context.Context, event sdk.Event) error {
 		}
 	}
 
-	time.Sleep(time.Duration(rand.Intn(100) * 100) * time.Millisecond)
+	time.Sleep(time.Duration(rand.Intn(10) * 100) * time.Millisecond)
 	sameStatus := false
 	if len(statusCache) > 0 {
 		lastStatus := statusCache[len(statusCache) - 1]
